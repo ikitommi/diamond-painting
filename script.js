@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const showGridCheckbox = document.getElementById('showGrid');
     const showSymbolsCheckbox = document.getElementById('showSymbols');
     const showColorsCheckbox = document.getElementById('showColors');
+    const canvasSizeSelect = document.getElementById('canvasSize');
     
     // Update the displayed values when sliders change
     rowsSlider.addEventListener('input', function() {
@@ -59,6 +60,30 @@ document.addEventListener('DOMContentLoaded', function() {
     showGridCheckbox.addEventListener('change', updatePatternDisplay);
     showSymbolsCheckbox.addEventListener('change', updatePatternDisplay);
     showColorsCheckbox.addEventListener('change', updatePatternDisplay);
+    canvasSizeSelect.addEventListener('change', function() {
+        if (this.value === 'custom') {
+            // Keep using the slider for custom sizes
+            rowsSlider.disabled = false;
+        } else {
+            // Calculate rows based on selected canvas size
+            const [height, width] = this.value.split('x').map(Number);
+            
+            // Assuming standard diamond size of 2.5mm
+            // Calculate how many diamonds fit in the selected dimensions
+            const diamondSize = 0.25; // 2.5mm = 0.25cm
+            const maxRows = Math.floor(height / diamondSize);
+            
+            // Update the slider value and disable it
+            rowsSlider.value = Math.min(maxRows, 200); // Cap at 200
+            rowsValue.textContent = rowsSlider.value;
+            rowsSlider.disabled = true;
+            
+            // If we have an image, update the preview
+            if (originalImage) {
+                generatePattern();
+            }
+        }
+    });
     
     // Handle image upload
     function handleImageUpload(e) {
@@ -81,10 +106,53 @@ document.addEventListener('DOMContentLoaded', function() {
     // Display the original image
     function displayOriginalImage(img) {
         originalImageContainer.innerHTML = '';
+        
+        // Create a container for the image and overlay
+        const container = document.createElement('div');
+        container.style.position = 'relative';
+        container.style.display = 'inline-block';
+        
+        // Add the image
         const displayImg = img.cloneNode();
         displayImg.style.maxWidth = '100%';
         displayImg.style.maxHeight = '100%';
-        originalImageContainer.appendChild(displayImg);
+        container.appendChild(displayImg);
+        
+        // Add crop overlay if a specific canvas size is selected
+        if (canvasSizeSelect.value !== 'custom') {
+            const [canvasHeight, canvasWidth] = canvasSizeSelect.value.split('x').map(Number);
+            const targetAspectRatio = canvasWidth / canvasHeight;
+            const originalAspectRatio = img.width / img.height;
+            
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.border = '2px dashed #9c27b0';
+            overlay.style.boxSizing = 'border-box';
+            
+            if (originalAspectRatio > targetAspectRatio) {
+                // Original image is wider, crop sides
+                const cropWidth = img.height * targetAspectRatio;
+                const offsetX = (img.width - cropWidth) / 2;
+                
+                overlay.style.top = '0';
+                overlay.style.left = `${(offsetX / img.width) * 100}%`;
+                overlay.style.width = `${(cropWidth / img.width) * 100}%`;
+                overlay.style.height = '100%';
+            } else {
+                // Original image is taller, crop top/bottom
+                const cropHeight = img.width / targetAspectRatio;
+                const offsetY = (img.height - cropHeight) / 2;
+                
+                overlay.style.left = '0';
+                overlay.style.top = `${(offsetY / img.height) * 100}%`;
+                overlay.style.width = '100%';
+                overlay.style.height = `${(cropHeight / img.height) * 100}%`;
+            }
+            
+            container.appendChild(overlay);
+        }
+        
+        originalImageContainer.appendChild(container);
     }
     
     // Generate the diamond painting pattern
@@ -94,10 +162,50 @@ document.addEventListener('DOMContentLoaded', function() {
         const rows = parseInt(rowsSlider.value);
         const colorCount = parseInt(colorsSlider.value);
         
-        // Calculate width based on aspect ratio
-        const aspectRatio = originalImage.width / originalImage.height;
-        const width = Math.round(rows * aspectRatio);
-        const height = rows;
+        // Get canvas dimensions from the selected size
+        let canvasWidth, canvasHeight;
+        const canvasSize = canvasSizeSelect.value;
+        
+        if (canvasSize !== 'custom') {
+            [canvasHeight, canvasWidth] = canvasSizeSelect.value.split('x').map(Number);
+        } else {
+            // For custom size, use the aspect ratio of the original image
+            const aspectRatio = originalImage.width / originalImage.height;
+            canvasWidth = Math.round(rows * aspectRatio);
+            canvasHeight = rows;
+        }
+        
+        // Calculate the target aspect ratio
+        const targetAspectRatio = canvasWidth / canvasHeight;
+        
+        // Calculate dimensions for cropping
+        let cropWidth, cropHeight, offsetX = 0, offsetY = 0;
+        const originalAspectRatio = originalImage.width / originalImage.height;
+        
+        if (originalAspectRatio > targetAspectRatio) {
+            // Original image is wider than target, crop the sides
+            cropHeight = originalImage.height;
+            cropWidth = cropHeight * targetAspectRatio;
+            offsetX = (originalImage.width - cropWidth) / 2;
+        } else {
+            // Original image is taller than target, crop top and bottom
+            cropWidth = originalImage.width;
+            cropHeight = cropWidth / targetAspectRatio;
+            offsetY = (originalImage.height - cropHeight) / 2;
+        }
+        
+        // Calculate the grid dimensions based on the canvas size
+        let width, height;
+        if (canvasSize !== 'custom') {
+            // For standard sizes, calculate based on diamond size
+            const diamondSize = 0.25; // 2.5mm = 0.25cm
+            height = Math.min(Math.floor(canvasHeight / diamondSize), 200);
+            width = Math.floor(canvasWidth / diamondSize);
+        } else {
+            // For custom size, use the rows value
+            height = rows;
+            width = Math.round(height * targetAspectRatio);
+        }
         
         // Create a canvas for the pattern
         const canvas = document.createElement('canvas');
@@ -105,8 +213,12 @@ document.addEventListener('DOMContentLoaded', function() {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         
-        // Draw the image on the canvas, maintaining aspect ratio
-        ctx.drawImage(originalImage, 0, 0, width, height);
+        // Draw the cropped image on the canvas
+        ctx.drawImage(
+            originalImage,
+            offsetX, offsetY, cropWidth, cropHeight, // Source rectangle (crop)
+            0, 0, width, height                      // Destination rectangle
+        );
         
         // Get the image data
         const imageData = ctx.getImageData(0, 0, width, height);
@@ -137,7 +249,13 @@ document.addEventListener('DOMContentLoaded', function() {
             width,
             height,
             assignments,
-            colorMapping
+            colorMapping,
+            canvasSize,
+            diamondCount: {
+                width: width,
+                height: height,
+                total: width * height
+            }
         };
         
         // Generate and display the pattern
@@ -220,7 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
         patternCanvas = canvas;
     }
     
-    // Update the download function to include bead counts
+    // Update the download function to include more detailed diamond count information
     function downloadPattern() {
         if (!patternData || !colorMap) return;
         
@@ -258,8 +376,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            // Create the color chart with bead counts
+            // Create the color chart with bead counts and canvas size
             let chartContent = 'Diamond Painting Color Chart\n\n';
+            
+            // Add canvas size information
+            if (patternData.canvasSize && patternData.canvasSize !== 'custom') {
+                chartContent += `Canvas Size: ${patternData.canvasSize.replace('x', 'cm × ')}cm\n`;
+            } else {
+                chartContent += `Custom Size: ${Math.round(patternData.diamondCount.height * 0.25)}cm × ${Math.round(patternData.diamondCount.width * 0.25)}cm\n`;
+            }
+            
+            // Add diamond count information
+            chartContent += `Diamond Grid: ${patternData.diamondCount.width} × ${patternData.diamondCount.height}\n`;
+            chartContent += `Total Diamonds: ${patternData.diamondCount.total}\n\n`;
+            
             chartContent += 'Symbol,Color Code,Hex Color,Beads Needed\n';
             
             // Create a Set to track unique colors used

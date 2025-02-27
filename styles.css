@@ -348,4 +348,22 @@ footer i {
     h1 {
         font-size: 2rem;
     }
+}
+
+/* Add these styles for the dropdown */
+.select-dropdown {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background-color: white;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.select-dropdown:hover, .select-dropdown:focus {
+    border-color: #9c27b0;
+    outline: none;
 } 
